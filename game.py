@@ -14,15 +14,13 @@ class Game:
         self.screen_width = 1920
         self.screen_height = CHOCOBO_HEIGHT
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        self.screen.fill((0,0,0)) # Black screen
-        #self.screen.fill((0,255,0)) # Green screen
 
         self.chocobo_sprites = ChocoboSprites()
         self.chocobos = [
                 Chocobo(self, 0),
-                Chocobo(self, 1),
                 Chocobo(self, 2),
-                Chocobo(self, 3),
+                #Chocobo(self, 3),
+                #Chocobo(self, 4),
         ]
 
     def draw(self):
@@ -31,6 +29,8 @@ class Game:
                 logging.debug("exiting...")
                 sys.exit()
 
+        self.screen.fill((255,0, 255)) # Magenta BG
+
         for c in self.chocobos:
             c.draw()
 
@@ -38,7 +38,7 @@ class Game:
 
     def run(self):
         while True:
-            time.sleep(0.05)
+            time.sleep(.1)
 
             for c in self.chocobos:
                 c.move()

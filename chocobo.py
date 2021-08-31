@@ -5,14 +5,27 @@ import random
 class Chocobo:
     def __init__(self, game, number):
         self.game = game
-        self.x = 0
+        self.x = -80
         self.y = 0
+        self.lap = 1
         self.run_frame = 0
+        self.double_rolls = 0
         self.chocobo_number = number
 
     def move(self):
-        distance = random.randrange(1, 4)
-        self.x = ((self.x + distance) % self.game.screen_width)
+        roll = random.randint(1,7)
+        if roll == 6:
+            self.double_rolls += 5
+
+        if self.double_rolls:
+            roll *= 2
+            self.double_rolls -= 1
+
+        self.x += roll
+        if self.x > self.game.screen_width:
+            self.lap += 1
+            self.x -= self.game.screen_width + 80
+
         self.run_frame = ((self.run_frame + 1) % 3)
 
     def draw(self):

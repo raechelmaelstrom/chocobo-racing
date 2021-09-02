@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import asyncio
 from enum import Enum
 import logging
 import time
@@ -90,7 +91,7 @@ class Game:
 
         self.wait_time -= 1
 
-    def run(self):
+    async def run(self):
         while True:
             self.screen.fill((255,0, 255)) # Magenta BG
 
@@ -99,7 +100,7 @@ class Game:
                     logging.debug("exiting...")
                     sys.exit()
 
-            time.sleep(.1)
+            await asyncio.sleep(.1)
 
             if self.state == GameState.IDLE:
                 self.draw_idle()
@@ -115,6 +116,16 @@ class Game:
 
             pygame.display.flip()
 
+def pygame_event_loop(loop, event_queue):
+    while True:
+        event = pygame.event.wait()
+        asyncio.run_coroutine_threadsafe(event_queue.put(event), loop=loop)
+
+        if event.type == pygame.QUIT:
+            break
+
+    asyncio.get_event_loop().stop()
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     logging.debug("Initializing game")
@@ -122,6 +133,20 @@ if __name__ == "__main__":
     pygame.init()
     pygame.display.set_caption("Chocobo Racing")
 
-    logging.debug("initialized")
+    loop = asyncio.get_event_loop()
+    event_queue = asyncio.Queue()
     game = Game()
-    game.run()
+
+    pygame_task = loop.run_in_executor(None, pygame_event_loop, loop, event_queue)
+    game_task = asyncio.ensure_future(game.run())
+    logging.debug("initialized")
+
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        pygame_task.cancel()
+        game_task.cancel()
+
+    pygame.quit()

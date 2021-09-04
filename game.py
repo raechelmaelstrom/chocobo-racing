@@ -10,6 +10,9 @@ import pygame.freetype
 
 from pygame.locals import *
 
+from twitchio import Channel, User, Client
+
+import creds
 from chocobo import Chocobo
 from chocobosprites import ChocoboSprites, CHOCOBO_HEIGHT
 
@@ -20,12 +23,14 @@ class GameState(Enum):
     WINNER = 4
 
 class Game:
-    def __init__(self):
+    def __init__(self, twitch):
         self.screen_width = 1920
         self.screen_height = CHOCOBO_HEIGHT
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         self.chocobo_sprites = ChocoboSprites()
         self.font = pygame.freetype.Font("ff6.ttf", 72)
+        self.twitch = twitch
+        self.twitch_user = None
         self.reset()
 
     def reset(self):
@@ -33,10 +38,11 @@ class Game:
         self.wait_time = 300
         self.current_lap = 0
         self.winner = None
+        self.prediction = None
 
         self.chocobos = [
-                Chocobo(self, 2),
                 Chocobo(self, 0),
+                Chocobo(self, 2),
         ]
 
     def draw_idle(self):
@@ -46,10 +52,16 @@ class Game:
             self.wait_time = 300
             self.state = GameState.STARTING
 
-    def draw_starting(self):
+    async def draw_starting(self):
         self.wait_time -= 1
         text_surface, rect = self.font.render(f"Starting race in: {self.wait_time / 10}", (255, 255, 255))
         self.screen.blit(text_surface, dest=(700, 15))
+
+        if self.twitch_user == None:
+            self.twitch_user = (await self.twitch.fetch_users(names=[creds.username]))[0]
+
+        if self.prediction == None:
+            self.prediction = await self.twitch_user.create_prediction(creds.token, 'Chocobo Race Results', 'yellow', 'red', 30)
 
         if self.wait_time <= 0:
             self.wait_time = 300
@@ -77,9 +89,15 @@ class Game:
         if self.winner:
             self.state = GameState.WINNER
 
-    def draw_winner(self):
+    async def draw_winner(self):
         text_surface, rect = self.font.render(f"A Winner is You", (255, 255, 255))
         self.screen.blit(text_surface, dest=(700, 15))
+
+        if self.prediction:
+            winning_index = self.chocobos.index(self.winner)
+            winning_outcome = self.prediction.outcomes[winning_index].outcome_id
+            await self.twitch_user.end_prediction(creds.token, self.prediction.prediction_id, "RESOLVED", winning_outcome)
+            self.prediction = None
 
         if self.wait_time <= 0:
             self.reset()
@@ -91,40 +109,25 @@ class Game:
 
         self.wait_time -= 1
 
-    async def run(self):
+    async def run_game(self):
         while True:
             self.screen.fill((255,0, 255)) # Magenta BG
-
-            for event in pygame.event.get():
-                if event.type == pygame.locals.QUIT:
-                    logging.debug("exiting...")
-                    sys.exit()
 
             await asyncio.sleep(.1)
 
             if self.state == GameState.IDLE:
                 self.draw_idle()
             if self.state == GameState.STARTING:
-                self.draw_starting()
+                await self.draw_starting()
             elif self.state == GameState.RACING:
                 for c in self.chocobos:
                     c.move()
 
                 self.draw_race()
             elif self.state == GameState.WINNER:
-                self.draw_winner()
+                await self.draw_winner()
 
             pygame.display.flip()
-
-def pygame_event_loop(loop, event_queue):
-    while True:
-        event = pygame.event.wait()
-        asyncio.run_coroutine_threadsafe(event_queue.put(event), loop=loop)
-
-        if event.type == pygame.QUIT:
-            break
-
-    asyncio.get_event_loop().stop()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
@@ -134,11 +137,15 @@ if __name__ == "__main__":
     pygame.display.set_caption("Chocobo Racing")
 
     loop = asyncio.get_event_loop()
-    event_queue = asyncio.Queue()
-    game = Game()
 
-    pygame_task = loop.run_in_executor(None, pygame_event_loop, loop, event_queue)
-    game_task = asyncio.ensure_future(game.run())
+    twitch = Client(token=creds.token,
+                    initial_channels=[f'#{creds.username}'],
+                    client_secret=creds.client_secret,
+                    loop=loop)
+    game = Game(twitch)
+
+    game_task = loop.create_task(game.run_game())
+    twitch_task = loop.create_task(twitch.run())
     logging.debug("initialized")
 
     try:
@@ -146,7 +153,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     finally:
-        pygame_task.cancel()
+        twitch_task.cancel()
         game_task.cancel()
 
     pygame.quit()

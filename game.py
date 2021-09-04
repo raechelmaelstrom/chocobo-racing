@@ -129,6 +129,13 @@ class Game:
 
             pygame.display.flip()
 
+def pygame_event_loop():
+    while True:
+        event = pygame.event.wait()
+
+        if event.type == pygame.QUIT:
+            break
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     logging.debug("Initializing game")
@@ -144,6 +151,7 @@ if __name__ == "__main__":
                     loop=loop)
     game = Game(twitch)
 
+    pygame_task = loop.run_in_executor(None, pygame_event_loop)
     game_task = loop.create_task(game.run_game())
     twitch_task = loop.create_task(twitch.run())
     logging.debug("initialized")
@@ -153,6 +161,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     finally:
+        pygame_task.cancel()
         twitch_task.cancel()
         game_task.cancel()
 
